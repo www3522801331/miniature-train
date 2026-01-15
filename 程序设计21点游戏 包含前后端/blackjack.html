@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>21点游戏 Web版（双玩家）</title>
+    <style>
+        /* 全局样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+
+        /* 页面主体样式 */
+        body {
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        /* 游戏标题 */
+        h1 {
+            color: #f1c40f;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+        }
+
+        /* 游戏容器 */
+        .game-container {
+            background-color: #3498db20;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            width: 80%;
+            max-width: 800px;
+        }
+
+        /* 玩家/庄家区域样式 */
+        .player-area {
+            margin-bottom: 30px;
+        }
+
+        .player-area h2 {
+            color: #3498db;
+            margin-bottom: 15px;
+            font-size: 1.8rem;
+        }
+
+        /* 手牌展示区 */
+        .hand-container {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        /* 单张牌样式 */
+        .card {
+            background-color: white;
+            color: black;
+            width: 80px;
+            height: 120px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        /* 点数提示 */
+        .total-points {
+            font-size: 1.2rem;
+            color: #ecf0f1;
+            margin-top: 5px;
+        }
+
+        /* 按钮样式 */
+        .btn-container {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #initBtn {
+            background-color: #2ecc71;
+            color: white;
+        }
+
+        /* 区分不同玩家的操作按钮 */
+        .player1-btn {
+            background-color: #3498db;
+            color: white;
+        }
+        .player2-btn {
+            background-color: #9b59b6;
+            color: white;
+        }
+        #standBtn {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* 结果提示 */
+        .result {
+            margin-top: 20px;
+            font-size: 1.5rem;
+            text-align: center;
+            color: #f1c40f;
+            min-height: 2rem;
+            white-space: pre-line; /* 新增：支持换行显示多玩家结果 */
+        }
+    </style>
+</head>
+<body>
+    <h1>🎲 21点游戏 Web版</h1>
+    <div class="game-container">
+        <!-- 庄家区域 -->
+        <div class="player-area">
+            <h2>庄家</h2>
+            <div id="dealerHand" class="hand-container"></div>
+            <div id="dealerTotal" class="total-points">点数：0</div>
+        </div>
+
+        <!-- 玩家1区域 -->
+        <div class="player-area">
+            <h2>玩家1</h2>
+            <div id="player1Hand" class="hand-container"></div>
+            <div id="player1Total" class="total-points">点数：0</div>
+        </div>
+
+        <!-- 玩家2区域 -->
+        <div class="player-area">
+            <h2>玩家2</h2>
+            <div id="player2Hand" class="hand-container"></div>
+            <div id="player2Total" class="total-points">点数：0</div>
+        </div>
+
+        <!-- 结果提示 -->
+        <div id="gameResult" class="result"></div>
+
+        <!-- 操作按钮：优化为“当前玩家停牌” -->
+        <div class="btn-container">
+            <button id="initBtn">开始游戏</button>
+            <button id="player1HitBtn" class="player1-btn" disabled>玩家1抽牌</button>
+            <button id="player2HitBtn" class="player2-btn" disabled>玩家2抽牌</button>
+            <button id="standBtn" disabled>当前玩家停牌</button>
+        </div>
+    </div>
+
+    <!-- 引入Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        // 1. 获取页面元素
+        const initBtn = document.getElementById('initBtn');
+        const player1HitBtn = document.getElementById('player1HitBtn');
+        const player2HitBtn = document.getElementById('player2HitBtn');
+        const standBtn = document.getElementById('standBtn');
+        const player1Hand = document.getElementById('player1Hand');
+        const player2Hand = document.getElementById('player2Hand');
+        const dealerHand = document.getElementById('dealerHand');
+        const player1Total = document.getElementById('player1Total');
+        const player2Total = document.getElementById('player2Total');
+        const dealerTotal = document.getElementById('dealerTotal');
+        const gameResult = document.getElementById('gameResult');
+
+        // 全局变量：记录当前可操作的玩家ID
+        let currentPlayerId = 0;
+
+        // 2. 初始化游戏
+        initBtn.addEventListener('click', async () => {
+            try {
+                const response = await axios.post(
+                    'http://localhost:5000/api/init_game',
+                    { player_count: 2 },
+                    { headers: { 'Content-Type': 'application/json' } }
+                );
+                const data = response.data;
+
+                // 更新手牌和点数
+                updateHand(player1Hand, data.players[0].hand);
+                updateHand(player2Hand, data.players[1].hand);
+                updateHand(dealerHand, data.dealer.hand);
+                player1Total.textContent = `点数：${data.players[0].total}`;
+                player2Total.textContent = `点数：${data.players[1].total}`;
+                dealerTotal.textContent = `点数：${data.dealer.total}`;
+
+                // 更新当前玩家ID和按钮状态
+                currentPlayerId = data.current_player_id || 0;
+                updateButtonStatus();
+                gameResult.textContent = `游戏开始！当前轮到【玩家${currentPlayerId + 1}】操作`;
+
+                // 禁用开始游戏，启用停牌按钮
+                initBtn.disabled = true;
+                standBtn.disabled = false;
+            } catch (error) {
+                gameResult.textContent = `初始化失败：${error.response?.data?.error || error.message}`;
+            }
+        });
+
+        // 3. 玩家1抽牌
+        player1HitBtn.addEventListener('click', async () => {
+            if (currentPlayerId !== 0) {
+                gameResult.textContent = "请先完成玩家1的操作后，再操作玩家2！";
+                return;
+            }
+
+            try {
+                const response = await axios.post(
+                    'http://localhost:5000/api/player_hit',
+                    { player_id: 0 },
+                    { headers: { 'Content-Type': 'application/json' } }
+                );
+                const data = response.data;
+
+                // 更新玩家1的手牌和点数
+                updateHand(player1Hand, data.players[0].hand);
+                player1Total.textContent = `点数：${data.players[0].total}`;
+
+                // 优先显示后端返回的结果（修复提示语错误）
+                gameResult.textContent = data.result;
+
+                // 更新当前玩家ID
+                currentPlayerId = data.current_player_id || currentPlayerId;
+                updateButtonStatus();
+
+                // 若游戏结束，直接显示最终结果
+                if (data.game_over) {
+                    updateHand(dealerHand, data.dealer.hand);
+                    dealerTotal.textContent = `点数：${data.dealer.total}`;
+                    resetGameButtons();
+                }
+            } catch (error) {
+                gameResult.textContent = `玩家1抽牌失败：${error.response?.data?.error || error.message}`;
+            }
+        });
+
+        // 4. 玩家2抽牌（核心修复：同步最终结果）
+        player2HitBtn.addEventListener('click', async () => {
+            if (currentPlayerId !== 1) {
+                gameResult.textContent = "请先完成玩家1的操作后，再操作玩家2！";
+                return;
+            }
+
+            try {
+                const response = await axios.post(
+                    'http://localhost:5000/api/player_hit',
+                    { player_id: 1 },
+                    { headers: { 'Content-Type': 'application/json' } }
+                );
+                const data = response.data;
+
+                // 更新玩家2的手牌和点数
+                updateHand(player2Hand, data.players[1].hand);
+                player2Total.textContent = `点数：${data.players[1].total}`;
+
+                // 核心修复1：直接显示后端返回的结果（避免前端自定义提示语错误）
+                gameResult.textContent = data.result;
+
+                // 核心修复2：游戏结束时立即更新庄家手牌和最终结果
+                if (data.game_over) {
+                    updateHand(dealerHand, data.dealer.hand);
+                    dealerTotal.textContent = `点数：${data.dealer.total}`;
+                    resetGameButtons();
+                }
+
+                // 更新当前玩家ID
+                currentPlayerId = data.current_player_id || currentPlayerId;
+                updateButtonStatus();
+
+            } catch (error) {
+                gameResult.textContent = `玩家2抽牌失败：${error.response?.data?.error || error.message}`;
+            }
+        });
+
+        // 5. 当前玩家停牌
+        standBtn.addEventListener('click', async () => {
+            try {
+                const response = await axios.post(
+                    'http://localhost:5000/api/player_stand',
+                    { player_id: currentPlayerId },
+                    { headers: { 'Content-Type': 'application/json' } }
+                );
+                const data = response.data;
+
+                // 显示后端返回的结果
+                gameResult.textContent = data.result;
+
+                // 游戏结束时更新庄家结果
+                if (data.game_over) {
+                    updateHand(dealerHand, data.dealer.hand);
+                    dealerTotal.textContent = `点数：${data.dealer.total}`;
+                    resetGameButtons();
+                }
+
+                // 更新当前玩家ID
+                currentPlayerId = data.current_player_id || currentPlayerId;
+                updateButtonStatus();
+
+            } catch (error) {
+                gameResult.textContent = `停牌失败：${error.response?.data?.error || error.message}`;
+            }
+        });
+
+        // 辅助函数1：更新按钮状态
+        function updateButtonStatus() {
+            // 先禁用所有抽牌按钮
+            player1HitBtn.disabled = true;
+            player2HitBtn.disabled = true;
+
+            // 只启用当前轮次玩家的抽牌按钮
+            if (currentPlayerId === 0 && !initBtn.disabled) {
+                player1HitBtn.disabled = false;
+            } else if (currentPlayerId === 0) {
+                player1HitBtn.disabled = false;
+            } else if (currentPlayerId === 1) {
+                player2HitBtn.disabled = false;
+            } else {
+                standBtn.disabled = true;
+            }
+        }
+
+        // 辅助函数2：更新手牌展示
+        function updateHand(container, cards) {
+            container.innerHTML = '';
+            cards.forEach(card => {
+                const cardElement = document.createElement('div');
+                cardElement.className = 'card';
+                cardElement.innerHTML = `
+                    <span>${card.suit}</span>
+                    <span>${card.rank}</span>
+                `;
+                container.appendChild(cardElement);
+            });
+        }
+
+        // 辅助函数3：游戏结束后重置按钮状态
+        function resetGameButtons() {
+            player1HitBtn.disabled = true;
+            player2HitBtn.disabled = true;
+            standBtn.disabled = true;
+            initBtn.disabled = false;
+        }
+    </script>
+</body>
+</html>
